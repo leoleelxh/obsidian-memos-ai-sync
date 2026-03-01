@@ -18,6 +18,22 @@ export class MemosService {
         this.logger = new Logger('MemosService');
     }
 
+    /**
+     * Extracts the user ID from the JWT access token's `sub` claim.
+     * Required for Memos v0.22+: GET /api/v1/memos only returns public memos,
+     * while GET /api/v1/users/{id}/memos returns the authenticated user's own memos.
+     */
+    private getUserIdFromToken(): string | null {
+        try {
+            const payload = JSON.parse(
+                atob(this.accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))
+            );
+            return payload.sub ?? null;
+        } catch {
+            return null;
+        }
+    }
+
     async fetchAllMemos(): Promise<MemoItem[]> {
         try {
             this.logger.debug('开始获取 memos，API URL:', this.apiUrl);
@@ -33,9 +49,14 @@ export class MemosService {
                 throw new Error('API URL 格式不正确，请确保包含 /api/v1');
             }
 
+            // Memos v0.22+ requires user-scoped endpoint to retrieve private memos.
+            // /api/v1/memos only returns public memos from all users.
+            const userId = this.getUserIdFromToken();
+            this.logger.debug('User ID from token:', userId);
+
             do {
                 const baseUrl = this.apiUrl;
-                const url = `${baseUrl}/memos`;
+                const url = userId ? `${baseUrl}/users/${userId}/memos` : `${baseUrl}/memos`;
 
                 // 构建请求参数
                 const params = new URLSearchParams({
